@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CalendarPlus, KeyRound, Pencil, Trash2, Unlink } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, Dices, KeyRound, Pencil, Trash2, Unlink } from 'lucide-react'
 import { lessonStats, useStore } from '../store/hooks.js'
 import { supabase } from '../lib/supabase.js'
+import {
+  createStudentAccess,
+  genPassword,
+  isEmail,
+  resetStudentPassword,
+} from '../lib/studentAccess.js'
 import { EmptyState, Modal, ProgressBar, StatusBadge } from '../components/ui.jsx'
 
 const EMPTY_FORM = { name: '', grade: '', contacts: '', goal: '', email: '' }
@@ -19,7 +25,9 @@ export default function StudentDetail() {
   const { state, dispatch } = useStore()
   const [editOpen, setEditOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
-  const [linkEmail, setLinkEmail] = useState('')
+  const [accessEmail, setAccessEmail] = useState('')
+  const [accessPassword, setAccessPassword] = useState('')
+  const [showExisting, setShowExisting] = useState(false)
   const [linkMsg, setLinkMsg] = useState('')
   const [linkBusy, setLinkBusy] = useState(false)
 
@@ -85,9 +93,9 @@ export default function StudentDetail() {
 
   async function linkAccount(event) {
     event.preventDefault()
-    const email = (linkEmail || student.email || '').trim().toLowerCase()
-    if (!email) {
-      setLinkMsg('Укажите email ученика')
+    const email = (accessEmail || student.email || '').trim().toLowerCase()
+    if (!isEmail(email)) {
+      setLinkMsg('Укажите корректный email ученика')
       return
     }
     setLinkBusy(true)
@@ -118,6 +126,64 @@ export default function StudentDetail() {
       setLinkMsg(`Аккаунт привязан: ${email}. Выдайте ученику этот email и пароль.`)
     } catch (err) {
       setLinkMsg(`Ошибка: ${err.message || 'не удалось привязать аккаунт'}`)
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  async function createAccess(event) {
+    event.preventDefault()
+    const email = (accessEmail || student.email || '').trim().toLowerCase()
+    if (!isEmail(email)) {
+      setLinkMsg('Укажите корректный email ученика')
+      return
+    }
+    if (!accessPassword || accessPassword.length < 8) {
+      setLinkMsg('Пароль должен быть не короче 8 символов (кнопка с кубиком сгенерирует)')
+      return
+    }
+    setLinkBusy(true)
+    setLinkMsg('')
+    try {
+      const data = await createStudentAccess({ studentId: id, email, password: accessPassword })
+      dispatch({ type: 'student/save', student: { ...student, email, authUserId: data.userId || null } })
+      // Перечитываем карточку: auth_user_id мог проставить триггер/функция
+      const { data: fresh } = await supabase
+        .from('students')
+        .select('auth_user_id')
+        .eq('id', id)
+        .maybeSingle()
+      if (fresh?.auth_user_id) {
+        dispatch({
+          type: 'student/save',
+          student: { ...student, email, authUserId: fresh.auth_user_id },
+        })
+      }
+      setLinkMsg(
+        `Готово! Логин: ${email}, пароль: ${accessPassword}. Передайте их ученику — он войдёт на странице входа.`,
+      )
+      setAccessPassword('')
+    } catch (err) {
+      setLinkMsg(`Ошибка: ${err.message || 'не удалось создать доступ'}`)
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  async function changePassword(event) {
+    event.preventDefault()
+    if (!accessPassword || accessPassword.length < 8) {
+      setLinkMsg('Новый пароль должен быть не короче 8 символов')
+      return
+    }
+    setLinkBusy(true)
+    setLinkMsg('')
+    try {
+      await resetStudentPassword({ studentId: id, password: accessPassword })
+      setLinkMsg(`Пароль обновлён. Новый пароль: ${accessPassword} — передайте его ученику.`)
+      setAccessPassword('')
+    } catch (err) {
+      setLinkMsg(`Ошибка: ${err.message || 'не удалось сменить пароль'}`)
     } finally {
       setLinkBusy(false)
     }
@@ -181,9 +247,9 @@ export default function StudentDetail() {
           </div>
           <ProgressBar value={stats.percent} />
           <div className="stat-chips">
-            <span className="chip done">{stats.done} готово</span>
-            <span className="chip progress">{stats.inProgress} в процессе</span>
-            <span className="chip todo">{stats.left} осталось</span>
+            <span className="chip chip-done">{stats.done} готово</span>
+            <span className="chip chip-in-progress">{stats.inProgress} в процессе</span>
+            <span className="chip chip-todo">{stats.left} осталось</span>
           </div>
         </div>
         <div className="card stat wide">
@@ -210,15 +276,36 @@ export default function StudentDetail() {
           )}
         </div>
         <p className="muted small">
-          Как выдать вход: 1) создайте пользователя в Supabase Dashboard → Authentication → Add user
-          (email + временный пароль, Auto Confirm Email); 2) введите его email ниже и нажмите
-          «Привязать». Ученик войдёт с этим email и паролем.
+          Выдайте вход прямо здесь: введите email ученика, придумайте или сгенерируйте временный
+          пароль и нажмите «Создать доступ». Ученик войдёт с этим email и паролем на странице входа.
         </p>
         {student.authUserId ? (
           <div className="stack" style={{ marginTop: 12 }}>
             <p className="small">
               Привязан аккаунт: <strong>{student.email || '—'}</strong>
             </p>
+            <form className="toolbar" style={{ marginBottom: 0 }} onSubmit={changePassword}>
+              <label className="field grow">
+                <input
+                  type="text"
+                  autoComplete="new-password"
+                  value={accessPassword}
+                  placeholder="Новый временный пароль (мин. 8 символов)"
+                  onChange={(e) => setAccessPassword(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="icon-btn"
+                title="Сгенерировать пароль"
+                onClick={() => setAccessPassword(genPassword())}
+              >
+                <Dices size={16} />
+              </button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={linkBusy}>
+                <KeyRound size={15} /> {linkBusy ? 'Меняем…' : 'Сменить пароль'}
+              </button>
+            </form>
             <div className="head-actions">
               <button
                 type="button"
@@ -231,19 +318,76 @@ export default function StudentDetail() {
             </div>
           </div>
         ) : (
-          <form className="toolbar" style={{ marginTop: 12, marginBottom: 0 }} onSubmit={linkAccount}>
-            <label className="field grow">
-              <input
-                type="email"
-                value={linkEmail}
-                placeholder={student.email || 'student@example.com'}
-                onChange={(e) => setLinkEmail(e.target.value)}
-              />
-            </label>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={linkBusy}>
-              <KeyRound size={15} /> {linkBusy ? 'Привязываем…' : 'Привязать'}
-            </button>
-          </form>
+          <div className="stack" style={{ marginTop: 12 }}>
+            <form className="stack" onSubmit={createAccess}>
+              <div className="form-grid">
+                <label className="field">
+                  <span className="field-label">Email ученика</span>
+                  <input
+                    type="email"
+                    value={accessEmail}
+                    placeholder={student.email || 'student@example.com'}
+                    onChange={(e) => setAccessEmail(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Временный пароль</span>
+                  <div className="toolbar" style={{ marginBottom: 0, flexWrap: 'nowrap' }}>
+                    <input
+                      type="text"
+                      autoComplete="new-password"
+                      value={accessPassword}
+                      placeholder="Минимум 8 символов"
+                      onChange={(e) => setAccessPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title="Сгенерировать пароль"
+                      onClick={() => setAccessPassword(genPassword())}
+                    >
+                      <Dices size={16} />
+                    </button>
+                  </div>
+                </label>
+              </div>
+              <div className="head-actions">
+                <button type="submit" className="btn btn-primary btn-sm" disabled={linkBusy}>
+                  <KeyRound size={15} /> {linkBusy ? 'Создаём…' : 'Создать доступ'}
+                </button>
+              </div>
+            </form>
+            <div>
+              <button
+                type="button"
+                className="link"
+                onClick={() => setShowExisting((v) => !v)}
+              >
+                {showExisting
+                  ? 'Скрыть привязку существующего'
+                  : 'Пользователь уже создан в Dashboard? Привязать существующего'}
+              </button>
+              {showExisting && (
+                <form
+                  className="toolbar"
+                  style={{ marginTop: 10, marginBottom: 0 }}
+                  onSubmit={linkAccount}
+                >
+                  <label className="field grow">
+                    <input
+                      type="email"
+                      value={accessEmail}
+                      placeholder={student.email || 'student@example.com'}
+                      onChange={(e) => setAccessEmail(e.target.value)}
+                    />
+                  </label>
+                  <button type="submit" className="btn btn-ghost btn-sm" disabled={linkBusy}>
+                    Привязать
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
         )}
         {linkMsg && (
           <p className="small" style={{ marginTop: 10 }} role="status">
