@@ -32,14 +32,16 @@ export default function LessonView() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { state, dispatch } = useStore()
-  const [studentId, setStudentId] = useState(state.students[0]?.id || '')
+  const [studentId, setStudentId] = useState('')
+  // Данные грузятся асинхронно: если ученик не выбран, берём первого из списка
+  const activeStudentId = studentId || state.students[0]?.id || ''
 
   const lesson = state.lessons.find((l) => l.id === id)
 
   const note = useMemo(() => {
-    if (!lesson || !studentId) return ''
-    return state.progress[studentId]?.[lesson.id]?.note || ''
-  }, [state.progress, studentId, lesson])
+    if (!lesson || !activeStudentId) return ''
+    return state.progress[activeStudentId]?.[lesson.id]?.note || ''
+  }, [state.progress, activeStudentId, lesson])
 
   if (!lesson) {
     return (
@@ -57,15 +59,15 @@ export default function LessonView() {
   }
 
   function setStatus(status) {
-    if (!studentId) return
-    dispatch({ type: 'progress/set', studentId, lessonId: lesson.id, status })
+    if (!activeStudentId) return
+    dispatch({ type: 'progress/set', studentId: activeStudentId, lessonId: lesson.id, status })
   }
 
   function saveNote(event) {
-    if (!studentId) return
+    if (!activeStudentId) return
     dispatch({
       type: 'progress/note',
-      studentId,
+      studentId: activeStudentId,
       lessonId: lesson.id,
       note: event.target.value,
     })
@@ -128,7 +130,7 @@ export default function LessonView() {
             ) : (
               <div className="stack">
                 <label className="field select">
-                  <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
+                  <select value={activeStudentId} onChange={(e) => setStudentId(e.target.value)}>
                     {state.students.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -138,7 +140,7 @@ export default function LessonView() {
                 </label>
 
                 <StatusSwitch
-                  value={state.progress[studentId]?.[lesson.id]?.status}
+                  value={state.progress[activeStudentId]?.[lesson.id]?.status}
                   onChange={setStatus}
                 />
 

@@ -8,9 +8,8 @@
     <title>steptutlib — панель репетитора</title>
     <script>
       try {
-        var s = JSON.parse(localStorage.getItem('steptutlib:v1') || '{}')
         document.documentElement.dataset.theme =
-          (s.settings && s.settings.theme) || 'auto'
+          localStorage.getItem('steptutlib:theme') || 'auto'
       } catch (e) {
         document.documentElement.dataset.theme = 'auto'
       }

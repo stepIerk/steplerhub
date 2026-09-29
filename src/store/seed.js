@@ -135,6 +135,5 @@ $$y = kx + b$$
     students,
     progress,
     sessions: [],
-    settings: { theme: 'auto' },
   }
 }

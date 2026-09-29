@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CalendarPlus, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, KeyRound, Pencil, Trash2, Unlink } from 'lucide-react'
 import { lessonStats, useStore } from '../store/hooks.js'
+import { supabase } from '../lib/supabase.js'
 import { EmptyState, Modal, ProgressBar, StatusBadge } from '../components/ui.jsx'
 
-const EMPTY_FORM = { name: '', grade: '', contacts: '', goal: '' }
+const EMPTY_FORM = { name: '', grade: '', contacts: '', goal: '', email: '' }
 
 function formatDate(value) {
   return value
@@ -18,6 +19,9 @@ export default function StudentDetail() {
   const { state, dispatch } = useStore()
   const [editOpen, setEditOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [linkEmail, setLinkEmail] = useState('')
+  const [linkMsg, setLinkMsg] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
 
   const student = state.students.find((s) => s.id === id)
 
@@ -79,6 +83,71 @@ export default function StudentDetail() {
     }
   }
 
+  async function linkAccount(event) {
+    event.preventDefault()
+    const email = (linkEmail || student.email || '').trim().toLowerCase()
+    if (!email) {
+      setLinkMsg('Укажите email ученика')
+      return
+    }
+    setLinkBusy(true)
+    setLinkMsg('')
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('email', email)
+        .maybeSingle()
+      if (error) throw error
+      if (!profile) {
+        throw new Error(
+          'Пользователь с таким email не найден. Сначала создайте его в Supabase Dashboard → Authentication → Add user.',
+        )
+      }
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ student_id: id, role: 'student' })
+        .eq('id', profile.id)
+      if (profileError) throw profileError
+      const { error: studentError } = await supabase
+        .from('students')
+        .update({ auth_user_id: profile.id })
+        .eq('id', id)
+      if (studentError) throw studentError
+      dispatch({ type: 'student/save', student: { ...student, email, authUserId: profile.id } })
+      setLinkMsg(`Аккаунт привязан: ${email}. Выдайте ученику этот email и пароль.`)
+    } catch (err) {
+      setLinkMsg(`Ошибка: ${err.message || 'не удалось привязать аккаунт'}`)
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  async function unlinkAccount() {
+    if (!student.authUserId) return
+    if (!confirm('Отвязать аккаунт? Ученик больше не будет связан с этой карточкой.')) return
+    setLinkBusy(true)
+    setLinkMsg('')
+    try {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ student_id: null })
+        .eq('id', student.authUserId)
+      if (profileError) throw profileError
+      const { error: studentError } = await supabase
+        .from('students')
+        .update({ auth_user_id: null })
+        .eq('id', id)
+      if (studentError) throw studentError
+      dispatch({ type: 'student/save', student: { ...student, authUserId: null } })
+      setLinkMsg('Аккаунт отвязан')
+    } catch (err) {
+      setLinkMsg(`Ошибка: ${err.message || 'не удалось отвязать аккаунт'}`)
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
   return (
     <div className="page">
       <header className="page-head">
@@ -127,6 +196,60 @@ export default function StudentDetail() {
             <CalendarPlus size={15} /> Записать занятие
           </Link>
         </div>
+      </section>
+
+      <section className="card">
+        <div className="card-head">
+          <h2>
+            <KeyRound size={17} /> Доступ ученика
+          </h2>
+          {student.authUserId ? (
+            <span className="badge badge-done">Привязан</span>
+          ) : (
+            <span className="badge badge-todo">Нет доступа</span>
+          )}
+        </div>
+        <p className="muted small">
+          Как выдать вход: 1) создайте пользователя в Supabase Dashboard → Authentication → Add user
+          (email + временный пароль, Auto Confirm Email); 2) введите его email ниже и нажмите
+          «Привязать». Ученик войдёт с этим email и паролем.
+        </p>
+        {student.authUserId ? (
+          <div className="stack" style={{ marginTop: 12 }}>
+            <p className="small">
+              Привязан аккаунт: <strong>{student.email || '—'}</strong>
+            </p>
+            <div className="head-actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={linkBusy}
+                onClick={unlinkAccount}
+              >
+                <Unlink size={15} /> Отвязать
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form className="toolbar" style={{ marginTop: 12, marginBottom: 0 }} onSubmit={linkAccount}>
+            <label className="field grow">
+              <input
+                type="email"
+                value={linkEmail}
+                placeholder={student.email || 'student@example.com'}
+                onChange={(e) => setLinkEmail(e.target.value)}
+              />
+            </label>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={linkBusy}>
+              <KeyRound size={15} /> {linkBusy ? 'Привязываем…' : 'Привязать'}
+            </button>
+          </form>
+        )}
+        {linkMsg && (
+          <p className="small" style={{ marginTop: 10 }} role="status">
+            {linkMsg}
+          </p>
+        )}
       </section>
 
       <section className="card">
@@ -253,6 +376,14 @@ export default function StudentDetail() {
               type="text"
               value={form.contacts}
               onChange={(e) => setForm({ ...form, contacts: e.target.value })}
+            />
+          </label>
+          <label className="field span-2">
+            <span className="field-label">Email для входа</span>
+            <input
+              type="email"
+              value={form.email || ''}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </label>
           <label className="field span-2">

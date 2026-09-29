@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useReducer } from 'react'
-import { StoreContext } from './context.js'
-import { loadState, saveState } from './storage.js'
-import { createSeedState } from './seed.js'
+export const emptyCloudState = {
+  version: 1,
+  lessons: [],
+  students: [],
+  progress: {},
+  sessions: [],
+}
 
-function getInitial() {
-  const stored = loadState()
-  if (stored) return stored
-  const seeded = createSeedState()
-  saveState(seeded)
-  return seeded
+export function normalizeCloud(state) {
+  return {
+    ...emptyCloudState,
+    ...state,
+    lessons: Array.isArray(state?.lessons) ? state.lessons : [],
+    students: Array.isArray(state?.students) ? state.students : [],
+    sessions: Array.isArray(state?.sessions) ? state.sessions : [],
+    progress: state?.progress && typeof state.progress === 'object' ? state.progress : {},
+    version: 1,
+  }
 }
 
 function upsert(list, item) {
@@ -20,8 +27,10 @@ function progressFor(state, studentId) {
   return state.progress[studentId] || {}
 }
 
-function reducer(state, action) {
+export function reducer(state, action) {
   switch (action.type) {
+    case 'state/load':
+      return normalizeCloud(action.state)
     case 'lesson/save':
       return { ...state, lessons: upsert(state.lessons, action.lesson) }
     case 'lesson/delete':
@@ -81,40 +90,7 @@ function reducer(state, action) {
       return { ...state, sessions: upsert(state.sessions, action.session) }
     case 'session/delete':
       return { ...state, sessions: state.sessions.filter((s) => s.id !== action.id) }
-    case 'settings/patch':
-      return { ...state, settings: { ...state.settings, ...action.patch } }
-    case 'state/import':
-      return action.state
-    case 'state/reset':
-      return createSeedState()
-    case 'state/clear':
-      return {
-        version: 1,
-        lessons: [],
-        students: [],
-        progress: {},
-        sessions: [],
-        settings: state.settings,
-      }
     default:
       return state
   }
-}
-
-export function StoreProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, undefined, getInitial)
-
-  useEffect(() => {
-    saveState(state)
-  }, [state])
-
-  useEffect(() => {
-    const root = document.documentElement
-    const theme = state.settings.theme || 'auto'
-    root.dataset.theme = theme
-    root.style.colorScheme = theme === 'auto' ? 'light dark' : theme
-  }, [state.settings.theme])
-
-  const value = useMemo(() => ({ state, dispatch }), [state])
-  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

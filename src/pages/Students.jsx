@@ -5,7 +5,7 @@ import { lessonStats, useStore } from '../store/hooks.js'
 import { EmptyState, Modal, ProgressBar } from '../components/ui.jsx'
 import { uid } from '../store/storage.js'
 
-const EMPTY_FORM = { name: '', grade: '', contacts: '', goal: '' }
+const EMPTY_FORM = { name: '', grade: '', contacts: '', goal: '', email: '' }
 
 export default function Students() {
   const { state, dispatch } = useStore()
@@ -179,6 +179,15 @@ export default function Students() {
               value={form.contacts}
               placeholder="телефон / телеграм"
               onChange={(e) => setForm({ ...form, contacts: e.target.value })}
+            />
+          </label>
+          <label className="field span-2">
+            <span className="field-label">Email для входа (необязательно)</span>
+            <input
+              type="email"
+              value={form.email}
+              placeholder="student@example.com"
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </label>
           <label className="field span-2">
