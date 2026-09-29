@@ -36,7 +36,7 @@ export default function Layout({ children }) {
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">S</span>
-          <span className="brand-name">Stepler HUB</span>
+          <span className="brand-name">Stepler Hub</span>
         </div>
         <nav className="nav">
           <NavItems />
@@ -48,7 +48,7 @@ export default function Layout({ children }) {
         <header className="topbar">
           <div className="brand brand-mobile">
             <span className="brand-mark">S</span>
-            <span className="brand-name">Stepler HUB</span>
+            <span className="brand-name">Stepler Hub</span>
           </div>
         </header>
         <main className="content">{children}</main>

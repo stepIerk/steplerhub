@@ -35,7 +35,7 @@ export default function Login() {
       <div className="card auth-card">
         <div className="brand auth-brand">
           <span className="brand-mark">S</span>
-          <span className="brand-name">steptutlib</span>
+          <span className="brand-name">Stepler Hub</span>
         </div>
         <h1>Вход</h1>
         <p className="muted small">

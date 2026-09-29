@@ -1,0 +1,69 @@
+# Деплой Stepler Hub на GitHub Pages при каждом push в main.
+#
+# Что нужно один раз настроить в репозитории:
+#   1. Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#   2. Settings → Secrets and variables → Actions → New repository secret:
+#        VITE_SUPABASE_URL            (Project Settings → API в Supabase)
+#        VITE_SUPABASE_PUBLISHABLE_KEY (тот же раздел, publishable key)
+#      Без них собранный сайт покажет экран «Нет подключения к Supabase»,
+#      т.к. .env.local в git не попадает.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: SPA fallback for GitHub Pages
+        # GitHub Pages не умеет в историю BrowserRouter: прямые заходы на
+        # /steplerhub/program отдавали бы 404. Копия index.html как 404.html
+        # заставляет Pages отдать приложение, а роутер разберёт путь сам.
+        run: cp dist/index.html dist/404.html
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -52,7 +52,7 @@ export function exportState(state) {
   const link = document.createElement('a')
   const stamp = new Date().toISOString().slice(0, 10)
   link.href = url
-  link.download = `steptutlib-${stamp}.json`
+  link.download = `steplerhub-${stamp}.json`
   document.body.appendChild(link)
   link.click()
   link.remove()
