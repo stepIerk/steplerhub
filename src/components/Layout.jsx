@@ -45,12 +45,12 @@ export default function Layout({ children }) {
       </aside>
 
       <div className="main">
-        <header className="topbar">
+        {/* <header className="topbar">
           <div className="brand brand-mobile">
             <span className="brand-mark">S</span>
             <span className="brand-name">Stepler Hub</span>
           </div>
-        </header>
+        </header> */}
         <main className="content">{children}</main>
       </div>
 
